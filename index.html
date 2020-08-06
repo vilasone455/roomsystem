@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@5.x/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <style>
+    .tab_noactive{
+      color : grey;
+
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <v-app>
+        <headers current_menu="booking"></headers>
+      <v-main>
+        <v-container fluid>
+          <sidenav :status="status" :types="types"  v-model="settings"></sidenav>
+                    <booking_form :dialog="bookingdialog" 
+                    @onbooking="savebooking" :room_id="selectbook"></booking_form>
+     
+                    <checklog_form :dialog="dialog" :room_id="selectroom" @check-in-submit="checkin"></checklog_form>
+                    <v-row>
+                        <v-col cols="3" v-for="(r,index) in filterRoom()" :key="index">
+                            <room :roomdata="r" @checkin="opencheckin" 
+                            :bookingdata="sendBooking(index)"
+                            @oncheckout="checkout" @booking="openbooking"></room>
+                        </v-col>
+                    </v-row>
+        </v-container>
+      </v-main>
+    </v-app>
+  </div>
+  <script src="./lib/axios.min.js"></script>
+  <script src="./lib/vue.js"></script>
+  <script src="./lib/vue-router.js"></script>
+  <script src="./lib/vuetify.js"></script>
+  <script src="./components/datepicker.js"></script>
+  <script src="./components/room.js"></script>
+  <script src="./components/headers.js"></script>
+  <script src="./components/sidenav.js"></script>
+  <script src="./components/checklog_form.js"></script>
+  <script src="./components/booking_form.js"></script>
+
+  <script>
+    new Vue({
+      el: '#app',
+      vuetify: new Vuetify(),
+      mounted(){
+       this.getBooking()
+       this.refresh()
+      },
+      data:{
+        settings : {
+          type : [],
+          status : []
+        },
+        checks : [],
+        dialog : false,
+        bookingdialog : false,
+        rooms : [],
+        selectroom : 1,
+        selectbook : 1,
+        booking : [],
+        status : [1,2],
+        types : []
+      },
+      methods:{
+
+        count_room_field(fname , value){
+          var rs = 0
+          this.rooms.forEach(r=>{
+            if(r[fname] == value){
+              rs ++
+            }
+          })
+          return rs
+        },
+
+        refresh(){
+          axios.get('./php/api/fetchroom.php').then(rs=>{
+            this.rooms = rs.data
+            this.RoomType()
+            this.RoomStatus()
+          })
+        },
+
+        RoomType(){
+          axios.get('./php/api/roomtype.php').then(rs=>{
+            this.types = rs.data
+            this.fillsetting('type' , this.types)
+
+            for (let i = 0; i < this.types.length; i++) {
+              var cout = this.count_room_field('room_type' , this.types[i].id)
+              this.types[i].count = cout
+            }
+
+          })
+        },
+
+        RoomStatus(){
+          axios.get('./php/api/roomstatus.php').then(rs=>{
+            this.status = rs.data
+            this.fillsetting('status' , this.status)
+
+            for (let i = 0; i < this.status.length; i++) {
+              var cout = this.count_room_field('room_status' , this.status[i].id)
+              this.status[i].count = cout
+            }
+
+          })
+        },
+
+        fillsetting(fname , values){
+          for (let i = 0; i < values.length; i++) {
+              var vid = values[i].id
+              this.settings[fname].push(vid)
+            }
+        },
+
+
+        filter_field(dataset,fname ,roomfield){
+          var fset = this.settings[fname]
+          var rs = dataset.filter(function(room){
+            var ishave = false
+            for (let i = 0; i < fset.length; i++) {
+              if(fset[i] == room[roomfield]) {
+                ishave = true
+                break
+              }
+            }
+            return ishave
+          });
+          return rs
+        },
+        
+        filterRoom(){
+          var type_id = this.settings.type;
+          var rs = this.filter_field(this.rooms,'type' , 'room_type')
+          rs = this.filter_field(rs,'status' , 'room_status')
+          return rs
+        },
+
+        getBooking(){
+          axios.get("./php/api/getBooking.php").then(rs=>{
+            this.booking = rs.data
+            console.log(this.booking)
+          })
+        },
+
+        sendBooking(i){
+          var r = null
+          var room_id = this.rooms[i].room_id
+          var indexof = this.booking.findIndex(b=>b.room_id == room_id)
+          if(indexof != -1){
+            r = this.booking[indexof]
+          }
+          return r
+        },
+
+        opencheckin(room){
+          this.dialog = true
+          this.selectroom = room.room_id
+        },
+
+        openbooking(room){
+          this.bookingdialog = true
+          alert(this.bookingdialog)
+          this.selectbook = room.room_id
+          console.log("select "+ this.selectbook)
+        },
+
+        async savebooking(form){
+          alert(JSON.stringify(form))
+          await axios.post("./php/api/dobooking.php/?id=" + form.croom , form)
+          this.bookingdialog = false
+          this.getBooking()
+          this.refresh()
+        },
+
+        checkin(r){
+          axios.post("./php/api/checkin.php" , r).then(rs=>{
+            this.dialog = false
+            this.refresh()
+          })
+        },
+
+        getDate(){
+          var s = new Date()
+          s.setHours(s.getHours()+22);
+  
+            s = new Date(s).toISOString().
+            replace(/T/, ' ').      // replace T with a space
+            replace(/\..+/, '')     // delete the dot and everything after
+          },
+
+        checkout(roomdata){
+          var id = roomdata.room_id
+          var f = {
+            "croom" : id,
+            "cdate" : checkdate = new Date().toISOString()
+          }
+          axios.post("./php/api/checkout.php" , f).then(rs=>{
+            this.refresh()
+            console.log(rs.data)
+          })
+        },
+      }
+    })
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
